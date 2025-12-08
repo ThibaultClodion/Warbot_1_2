@@ -691,8 +691,9 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
     if (bob == null) {
       Robot enemyLauncher = (Robot)minDist(perceiveRobots(ennemy, LAUNCHER));
       if (enemyLauncher != null) {
-        // Only engage if we have more bullets (good chance to win)
-        if (bullets > enemyLauncher.bullets + 200) {
+        // Only engage if we are sure to win
+        if(enemyLauncher.bullets * bulletDamageToRobot < energy &&
+        bullets * bulletDamageToRobot > enemyLauncher.energy) {
           bob = enemyLauncher;
         }
         // Retreat
