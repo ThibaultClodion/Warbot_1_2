@@ -646,7 +646,7 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
   //
   void go() {
     // if no energy or no bullets, go back to base
-    if ((energy < 100) || (bullets == 0)) {
+    if ((energy < 300) || (bullets == 0)) {
       brain[4].x = 1;
     }
 
@@ -679,10 +679,10 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
   void selectTargetWithPriority() {
     Robot bob = null;
     
-    // Priority 1: Enemy bases (strategic targets)
+    // Priority 1: Enemy bases (highest priority)
     bob = (Robot)minDist(perceiveRobots(ennemy, BASE));
     
-    // Priority 2: Enemy harvesters (disrupt economy)
+    // Priority 2: Enemy harvesters (economic targets)
     if (bob == null) {
       bob = (Robot)minDist(perceiveRobots(ennemy, HARVESTER));
     }
@@ -779,12 +779,12 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
     return predicted;
   }
 
-  //
+    //
   // pursueAndShoot
   // ==============
   // > pursue the target and shoot as much as possible
   //
-void pursueAndShoot() {
+  void pursueAndShoot() {
     // Get current target position (updated by selectTargetWithPriority)
     PVector targetPos = new PVector(brain[0].x, brain[0].y);
     float distToTarget = distance(targetPos);
@@ -792,34 +792,61 @@ void pursueAndShoot() {
     // Get predicted position for shooting
     PVector predictedPos = new PVector(brain[1].x, brain[1].y);
     
-    // Calculate angle to predicted position
-    float angleToTarget = atan2(predictedPos.y - pos.y, predictedPos.x - pos.x);
+    // FIXED: Use towards() method which handles wrapping correctly
+    float angleToTarget = towards(predictedPos);
     
-    // MOVEMENT
-    if (distToTarget > launcherPerception * 0.8) {
+    // OPTIMIZED MOVEMENT with minimum safe distance
+    float optimalDistance = launcherPerception * 0.7;  // Optimal shooting distance
+    float minSafeDistance = 1.0;  // Minimum distance to avoid passing through
+    
+    if (distToTarget > optimalDistance) {
+      // Too far - move closer aggressively
+      // FIXED: Use towards() for movement direction as well
       heading = towards(targetPos);
       tryToMoveForward();
     } 
-    else if (distToTarget > 3) {
-      heading = towards(targetPos);
-      if (freeAhead(speed * 0.5)) {
-        forward(speed * 0.5);
+    else if (distToTarget < minSafeDistance) {
+      // TOO CLOSE - RETREAT to safe distance
+      // Move backwards while keeping target in sight
+      // FIXED: Use towards() and add PI to go opposite direction
+      heading = towards(targetPos) + PI;  // Opposite direction
+      if (freeAhead(speed)) {
+        forward(speed);
       } else {
-        tryToMoveForward();
+        // If blocked, strafe to the side
+        right(90);
+        if (freeAhead(speed)) {
+          forward(speed);
+        }
       }
     }
+    else if (distToTarget < optimalDistance * 0.8) {
+      // Still a bit too close - maintain distance or retreat slowly
+      heading = angleToTarget;  // Face target
+      // Don't move forward, just adjust angle
+    }
     else {
+      // Perfect distance range - maintain position and focus on shooting
       heading = angleToTarget;
+      
+      // Small adjustments to keep optimal distance
+      if (distToTarget > optimalDistance) {
+        if (freeAhead(speed * 0.3)) {
+          forward(speed * 0.3);
+        }
+      }
     }
     
-    // SHOOTING
-    ArrayList friendsInCone = perceiveRobotsInCone(friend, angleToTarget);
-    
-    if (friendsInCone == null || friendsInCone.size() == 0) {
-      heading = angleToTarget;
-      launchBullet(angleToTarget);
+    // SHOOTING - only shoot if at safe distance
+    if (distToTarget >= minSafeDistance) {
+      ArrayList friendsInCone = perceiveRobotsInCone(friend, angleToTarget);
+      
+      if (friendsInCone == null || friendsInCone.size() == 0) {
+        heading = angleToTarget;
+        launchBullet(angleToTarget);
+      }
     }
-}
+  }
 
   //
   // target
