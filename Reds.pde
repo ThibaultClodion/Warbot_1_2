@@ -121,8 +121,8 @@ class RedBase extends Base implements RedRobot {
         // Calculate distance to target
         float distToTarget = distance(target);
         
-        // Use FAF for distant targets
-        if (distToTarget > basePerception * 0.6 && fafs >= 0) {
+        // Use FAF for distant moving distant targets
+        if (target.breed != BASE && distToTarget > basePerception * 0.6 && fafs >= 0) {
           launchFaf(target);
         } 
         // Use bullets for closer targets
