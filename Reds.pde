@@ -100,7 +100,12 @@ class RedBase extends Base implements RedRobot {
       target = (Robot)minDist(perceiveRobots(ennemy, LAUNCHER));
     }
     
-    // Priority 3: Target other enemy robots
+    // Priority 3: Target harvester
+    if (target == null) {
+      target = (Robot)minDist(perceiveRobots(ennemy, HARVESTER));
+    }
+
+    // Priority 4: Target explorers
     if (target == null) {
       target = (Robot)minDist(perceiveRobots(ennemy));
     }
@@ -121,9 +126,10 @@ class RedBase extends Base implements RedRobot {
         // Calculate distance to target
         float distToTarget = distance(target);
 
-        if(target.breed == EXPLORER)
+        if(target.breed == EXPLORER) 
         {
-          return; // Avoid wasting ammo on explorers
+          // Don't waste ammo on explorers
+          return;
         }
         else if(bullets >= 10 && (target.breed == BASE || distToTarget < basePerception * 0.8)) {
           // Use bullets for bases or close targets
@@ -699,9 +705,20 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
       }
     }
     
-    // Priority 4: Enemy explorers (lowest priority)
+    // Priority 4: Enemy explorers not close to base (lowest priority)
     if (bob == null) {
       bob = (Robot)minDist(perceiveRobots(ennemy, EXPLORER));
+
+      // Ignore explorers that are too close to our bases (we trap them)
+      if (bob != null) {
+        Base nearestBase = (Base)minDist(myBases);
+        if (nearestBase != null) {
+          float distToBase = bob.distance(nearestBase);
+          if (distToBase < basePerception * 0.2) {
+            bob = null;
+          }
+        }
+      }
     }
     
     if (bob != null) {
