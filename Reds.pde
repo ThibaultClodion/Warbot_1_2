@@ -25,8 +25,12 @@ interface RedRobot {
 
 ///////////////////////////////////////////////////////////////////////////
 //
-// The code for the green bases
+// The code for the red bases
 //
+///////////////////////////////////////////////////////////////////////////
+// map of the brain:
+//   0.x / 0.y = position of known enemy base
+//   0.z = (0 = no enemy base known | 1 = enemy base known)
 ///////////////////////////////////////////////////////////////////////////
 class RedBase extends Base implements RedRobot {
   //
@@ -49,8 +53,10 @@ class RedBase extends Base implements RedRobot {
     brain[5].x = 7;
     // 2 rocket launchers to create
     brain[5].y = 2;
-    // 1 explorer to create
-    brain[5].z = 1;
+    // 0 explorer to create
+    brain[5].z = 0;
+    // No enemy base known at start
+    brain[0].z = 0;
   }
 
   //
@@ -63,6 +69,11 @@ class RedBase extends Base implements RedRobot {
     // handle received messages 
     handleMessages();
 
+    // Broadcast enemy base location to nearby allies
+    if (brain[0].z == 1) {
+      broadcastEnemyBaseLocation();
+    }
+
     // creates new robots depending on energy and the state of brain[5]
     if ((brain[5].x > 0) && (energy >= 1000 + harvesterCost)) {
       // 1st priority = creates harvesters 
@@ -71,7 +82,9 @@ class RedBase extends Base implements RedRobot {
     } else if ((brain[5].y > 0) && (energy >= 1000 + launcherCost)) {
       // 2nd priority = creates rocket launchers 
       if (newRocketLauncher())
+      {
         brain[5].y--;
+      }
     } else if ((brain[5].z > 0) && (energy >= 1000 + explorerCost)) {
       // 3rd priority = creates explorers 
       if (newExplorer())
@@ -148,6 +161,52 @@ class RedBase extends Base implements RedRobot {
   }
   
   //
+  // broadcastEnemyBaseLocation
+  // ==========================
+  // > broadcast enemy base location to all friendly robots in perception range
+  //
+  void broadcastEnemyBaseLocation() {
+    PVector enemyBasePos = new PVector(brain[0].x, brain[0].y);
+    
+    // Inform all rocket launchers in range
+    ArrayList launchers = perceiveRobots(friend, LAUNCHER);
+    if (launchers != null) {
+      for (int i = 0; i < launchers.size(); i++) {
+        Robot launcher = (Robot)launchers.get(i);
+        informAboutTarget(launcher, enemyBasePos, BASE);
+      }
+    }
+    
+    // Inform all explorers in range
+    ArrayList explorers = perceiveRobots(friend, EXPLORER);
+    if (explorers != null) {
+      for (int i = 0; i < explorers.size(); i++) {
+        Robot explorer = (Robot)explorers.get(i);
+        informAboutTarget(explorer, enemyBasePos, BASE);
+      }
+    }
+  }
+  
+  //
+  // informAboutTarget
+  // =================
+  // > send a message to a robot with position and breed of a target
+  //
+  // inputs
+  // ------
+  // > r = the robot to inform
+  // > targetPos = position of the target
+  // > breed = breed of the target
+  //
+  void informAboutTarget(Robot r, PVector targetPos, int breed) {
+    float[] args = new float[3];
+    args[0] = targetPos.x;
+    args[1] = targetPos.y;
+    args[2] = breed;
+    sendMessage(r, INFORM_ABOUT_TARGET, args);
+  }
+  
+  //
   // predictTargetPosition
   // =====================
   // > predicts where the target will be based on its current movement
@@ -186,8 +245,8 @@ class RedBase extends Base implements RedRobot {
   }
 
   //
-  // handleMessage
-  // =============
+  // handleMessages
+  // ==============
   // > handle messages received since last activation 
   //
   void handleMessages() {
@@ -202,10 +261,19 @@ class RedBase extends Base implements RedRobot {
           giveEnergy(msg.alice, msg.args[0]);
         }
       } else if (msg.type == ASK_FOR_BULLETS) {
-        // if the message is a request for energy
+        // if the message is a request for bullets
         if (energy > 1000 + msg.args[0] * bulletCost) {
           // gives the requested amount of bullets only if at least 1000 units of energy left after
           giveBullets(msg.alice, msg.args[0]);
+        }
+      } else if (msg.type == INFORM_ABOUT_TARGET) {
+        // if the message is about an enemy target
+        int targetBreed = (int)msg.args[2];
+        if (targetBreed == BASE) {
+          // Store enemy base position
+          brain[0].x = msg.args[0];
+          brain[0].y = msg.args[1];
+          brain[0].z = 1; // Mark that we know enemy base location
         }
       }
     }
@@ -250,7 +318,7 @@ class RedExplorer extends Explorer implements RedRobot {
   //
   void go() {
     // if food to deposit or too few energy
-    if ((carryingFood > 200) || (energy < 100))
+    if ((carryingFood > 200) || (energy < 300))
       // time to go back to base
       brain[4].x = 1;
 
