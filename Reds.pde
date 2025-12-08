@@ -47,6 +47,10 @@ class RedBase extends Base implements RedRobot {
     newHarvester();
     // 7 more harvesters to create
     brain[5].x = 7;
+    // 2 rocket launchers to create
+    brain[5].y = 2;
+    // 1 explorer to create
+    brain[5].z = 1;
   }
 
   //
@@ -620,6 +624,9 @@ class RedHarvester extends Harvester implements RedRobot {
 //   4.y = (0 = no target | 1 = localized target)
 //   1.x / 1.y = predicted target position for shooting
 //   2.x = distance to target
+//   2.y = (0 = no communicated target | 1 = has communicated target)
+//   3.x / 3.y = position of communicated target from explorer
+//   3.z = breed of communicated target
 ///////////////////////////////////////////////////////////////////////////
 class RedRocketLauncher extends RocketLauncher implements RedRobot {
   //
@@ -645,9 +652,15 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
   // > defines the behavior of the agent
   //
   void go() {
+    // Handle messages from explorers (only when not busy)
+    if (brain[4].x == 0 && brain[4].y == 0) {
+      handleMessages();
+    }
+    
     // if no energy or no bullets, go back to base
     if ((energy < 300) || (bullets == 0)) {
       brain[4].x = 1;
+      brain[2].y = 0; // Clear communicated target when going to base
     }
 
     // OPTIMIZED TARGET SELECTION with priority system
@@ -661,10 +674,71 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
     else if(hasTarget()) {
       // Pursue and shoot the target
       pursueAndShoot();
+    } else if (hasCommunicatedTarget()) {
+      // Move towards communicated target from explorer
+      moveTowardsCommunicatedTarget();
     } else {
       // else explore randomly
       randomMove(45);
     }
+  }
+
+  //
+  // handleMessages
+  // ==============
+  // > handle messages received from explorers
+  // > only accepts new targets when in search mode (not busy)
+  //
+  void handleMessages() {
+    Message msg;
+    // for all messages
+    for (int i=0; i<messages.size(); i++) {
+      msg = messages.get(i);
+      if (msg.type == INFORM_ABOUT_TARGET) {
+        // Store the communicated target position and breed
+        brain[3].x = msg.args[0]; // x position
+        brain[3].y = msg.args[1]; // y position
+        brain[3].z = msg.args[2]; // breed
+        brain[2].y = 1; // Mark that we have a communicated target
+      }
+    }
+    // clear the message queue
+    flushMessages();
+  }
+
+  //
+  // hasCommunicatedTarget
+  // =====================
+  // > checks if a communicated target from explorer is available
+  //
+  // output
+  // ------
+  // > true if communicated target available / false if not
+  //
+  boolean hasCommunicatedTarget() {
+    return (brain[2].y == 1);
+  }
+
+  //
+  // moveTowardsCommunicatedTarget
+  // ==============================
+  // > move towards the target communicated by an explorer
+  //
+  void moveTowardsCommunicatedTarget() {
+    // Get communicated target position
+    PVector targetPos = new PVector(brain[3].x, brain[3].y);
+    float distToTarget = distance(targetPos);
+    
+    // If we're close enough, clear the communicated target
+    // (we'll rely on our own perception now)
+    if (distToTarget < launcherPerception) {
+      brain[2].y = 0; // Clear communicated target flag
+      return;
+    }
+    
+    // Move towards the communicated target
+    heading = towards(targetPos);
+    tryToMoveForward();
   }
 
   //
@@ -701,6 +775,7 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
         {
           brain[4].x = 1; // Go back to base
           brain[4].y = 0; // Clear target lock
+          brain[2].y = 0; // Clear communicated target
           return;
         }
       }
@@ -736,6 +811,8 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
       
       // Lock the target
       brain[4].y = 1;
+      // Clear communicated target since we have a direct target now
+      brain[2].y = 0;
     } else {
       // No target found
       brain[4].y = 0;
