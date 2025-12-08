@@ -147,6 +147,12 @@ class RedBase extends Base implements RedRobot {
   // > predicted position vector
   //
   PVector predictTargetPosition(Robot target) {
+    // If target is stationary, return current position
+    if (target.breed == BASE) 
+    {
+      return target.pos.copy();
+    }
+
     // Calculate missile travel time (approximate)
     float distToTarget = distance(target);
     float missileSpeed = 1.0; // Typical speed of missiles
@@ -161,11 +167,6 @@ class RedBase extends Base implements RedRobot {
       target.pos.x + targetVelocityX * travelTime,
       target.pos.y + targetVelocityY * travelTime
     );
-    
-    // If target is stationary (base), return current position
-    if (target.breed == BASE || target.speed < 0.1) {
-      return target.pos.copy();
-    }
     
     return predicted;
   }
