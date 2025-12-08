@@ -600,7 +600,7 @@ class RedHarvester extends Harvester implements RedRobot {
 
 ///////////////////////////////////////////////////////////////////////////
 //
-// The code for the green rocket launchers
+// The code for the red rocket launchers
 //
 ///////////////////////////////////////////////////////////////////////////
 // map of the brain:
@@ -608,6 +608,8 @@ class RedHarvester extends Harvester implements RedRobot {
 //   0.z = breed of the target
 //   4.x = (0 = look for target | 1 = go back to base) 
 //   4.y = (0 = no target | 1 = localized target)
+//   1.x / 1.y = predicted target position for shooting
+//   2.x = distance to target
 ///////////////////////////////////////////////////////////////////////////
 class RedRocketLauncher extends RocketLauncher implements RedRobot {
   //
@@ -633,46 +635,170 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
   // > defines the behavior of the agent
   //
   void go() {
-    // if no energy or no bullets
-    if ((energy < 100) || (bullets == 0))
-      // go back to the base
+    // if no energy or no bullets, go back to base
+    if ((energy < 100) || (bullets == 0)) {
       brain[4].x = 1;
+    }
 
-    if (brain[4].x == 1) {
-      // if in "go back to base" mode
+    // OPTIMIZED TARGET SELECTION with priority system
+    selectTargetWithPriority();
+      
+    if (brain[4].x == 1)
+    {
+      // go back to base
       goBackToBase();
+    }
+    else if(hasTarget()) {
+      // Pursue and shoot the target
+      pursueAndShoot();
     } else {
-      // try to find a target
-      selectTarget();
-      // if target identified
-      if (target())
-        // shoot on the target
-        launchBullet(towards(brain[0]));
-      else
-        // else explore randomly
-        randomMove(45);
+      // else explore randomly
+      randomMove(45);
     }
   }
 
   //
-  // selectTarget
-  // ============
-  // > try to localize a target
+  // selectTargetWithPriority
+  // ========================
+  // > select target based on priority system:
+  // > 1. Bases (highest priority)
+  // > 2. Harvesters (economic targets)
+  // > 3. Rocket Launchers (only if we have advantage)
+  // > 4. Explorers (lowest priority)
   //
-  void selectTarget() {
-    // look for the closest ennemy robot
-    Robot bob = (Robot)minDist(perceiveRobots(ennemy));
+  void selectTargetWithPriority() {
+    Robot bob = null;
+    
+    // Priority 1: Enemy bases (strategic targets)
+    bob = (Robot)minDist(perceiveRobots(ennemy, BASE));
+    
+    // Priority 2: Enemy harvesters (disrupt economy)
+    if (bob == null) {
+      bob = (Robot)minDist(perceiveRobots(ennemy, HARVESTER));
+    }
+    
+    // Priority 3: Enemy rocket launchers (only if we have advantage)
+    if (bob == null) {
+      Robot enemyLauncher = (Robot)minDist(perceiveRobots(ennemy, LAUNCHER));
+      if (enemyLauncher != null) {
+        // Only engage if we have more bullets (good chance to win)
+        if (bullets > enemyLauncher.bullets + 200) {
+          bob = enemyLauncher;
+        }
+        // Retreat
+        else
+        {
+          brain[4].x = 1; // Go back to base
+          brain[4].y = 0; // Clear target lock
+          return;
+        }
+      }
+    }
+    
+    // Priority 4: Enemy explorers (lowest priority)
+    if (bob == null) {
+      bob = (Robot)minDist(perceiveRobots(ennemy, EXPLORER));
+    }
+    
     if (bob != null) {
-      // if one found, record the position and breed of the target
+      // Target found - record position, breed, and distance
       brain[0].x = bob.pos.x;
       brain[0].y = bob.pos.y;
       brain[0].z = bob.breed;
-      // locks the target
+      brain[2].x = distance(bob);
+      
+      // Calculate predicted position for accurate shooting
+      PVector predicted = predictTargetPosition(bob);
+      brain[1].x = predicted.x;
+      brain[1].y = predicted.y;
+      
+      // Lock the target
       brain[4].y = 1;
-    } else
-      // no target found
+    } else {
+      // No target found
       brain[4].y = 0;
+    }
   }
+
+  //
+  // predictTargetPosition
+  // =====================
+  // > predicts where the target will be when bullet arrives
+  //
+  // input
+  // -----
+  // > target = the enemy robot to track
+  //
+  // output
+  // ------
+  // > predicted position vector
+  //
+  PVector predictTargetPosition(Robot target) {
+    // If target is a base (stationary), return current position
+    if (target.breed == BASE) {
+      return target.pos.copy();
+    }
+    
+    // Calculate distance to target
+    float distToTarget = distance(target);
+    
+    // Bullet travel time
+    float bulletTravelTime = distToTarget / bulletSpeed;
+    
+    // Estimate target's future position based on velocity
+    float targetVelocityX = cos(target.heading) * target.speed;
+    float targetVelocityY = sin(target.heading) * target.speed;
+    
+    // Predict position with lead
+    PVector predicted = new PVector(
+      target.pos.x + targetVelocityX * bulletTravelTime,
+      target.pos.y + targetVelocityY * bulletTravelTime
+    );
+    
+    return predicted;
+  }
+
+  //
+  // pursueAndShoot
+  // ==============
+  // > pursue the target and shoot as much as possible
+  //
+void pursueAndShoot() {
+    // Get current target position (updated by selectTargetWithPriority)
+    PVector targetPos = new PVector(brain[0].x, brain[0].y);
+    float distToTarget = distance(targetPos);
+    
+    // Get predicted position for shooting
+    PVector predictedPos = new PVector(brain[1].x, brain[1].y);
+    
+    // Calculate angle to predicted position
+    float angleToTarget = atan2(predictedPos.y - pos.y, predictedPos.x - pos.x);
+    
+    // MOVEMENT
+    if (distToTarget > launcherPerception * 0.8) {
+      heading = towards(targetPos);
+      tryToMoveForward();
+    } 
+    else if (distToTarget > 3) {
+      heading = towards(targetPos);
+      if (freeAhead(speed * 0.5)) {
+        forward(speed * 0.5);
+      } else {
+        tryToMoveForward();
+      }
+    }
+    else {
+      heading = angleToTarget;
+    }
+    
+    // SHOOTING
+    ArrayList friendsInCone = perceiveRobotsInCone(friend, angleToTarget);
+    
+    if (friendsInCone == null || friendsInCone.size() == 0) {
+      heading = angleToTarget;
+      launchBullet(angleToTarget);
+    }
+}
 
   //
   // target
@@ -681,9 +807,9 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
   //
   // output
   // ------
-  // > true if target locket / false if not
+  // > true if target locked / false if not
   //
-  boolean target() {
+  boolean hasTarget() {
     return (brain[4].y == 1);
   }
 
@@ -701,13 +827,23 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
 
       if (dist <= 2) {
         // if next to the base
-        if (energy < 500)
+        if (energy < 500) {
           // if energy low, ask for some energy
           askForEnergy(bob, 1500 - energy);
-        // go back to "exploration" mode
-        brain[4].x = 0;
-        // make a half turn
-        right(180);
+        }
+        
+        // Request bullets if empty or low
+        if (bullets < launcherMaxBullets * 0.8) {
+          askForBullets(bob, launcherMaxBullets - bullets);
+        }
+        
+        // Only leave base if both energy and bullets are good
+        if (energy >= 500 && bullets >= launcherMaxBullets * 0.5) {
+          // go back to "combat" mode
+          brain[4].x = 0;
+          // make a half turn
+          right(180);
+        }
       } else {
         // if not next to the base, head towards it... 
         heading = towards(bob) + random(-radians(20), radians(20));
