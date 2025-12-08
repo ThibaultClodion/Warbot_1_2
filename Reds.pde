@@ -120,14 +120,18 @@ class RedBase extends Base implements RedRobot {
       if (friendsInCone == null || friendsInCone.size() == 0) {
         // Calculate distance to target
         float distToTarget = distance(target);
-        
-        // Use FAF for distant moving distant targets
-        if (target.breed != BASE && distToTarget > basePerception * 0.6 && fafs >= 0) {
-          launchFaf(target);
-        } 
-        // Use bullets for closer targets
-        else if (bullets >= 0) {
+
+        if(target.breed == EXPLORER)
+        {
+          return; // Avoid wasting ammo on explorers
+        }
+        else if(bullets >= 10 && (target.breed == BASE || distToTarget < basePerception * 0.8)) {
+          // Use bullets for bases or close targets
           launchBullet(shootAngle);
+        }
+        else if(fafs > 0) {
+          // Use fafs for other targets if available
+          launchFaf(target);
         }
       }
     }
