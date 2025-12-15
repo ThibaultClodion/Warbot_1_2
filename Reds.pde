@@ -346,6 +346,11 @@ class RedExplorer extends Explorer implements RedRobot {
       brain[4].x = 1; // Return to base
     }
     
+    // Inform nearby rocket launchers about enemy base if known
+    if (brain[4].y == 1) {
+      informRocketLaunchersAboutEnemyBase();
+    }
+    
     // Execute behavior based on mode
     if (brain[4].x == 0) {
       // Westward exploration mode
@@ -462,6 +467,46 @@ class RedExplorer extends Explorer implements RedRobot {
         }
       }
     }
+  }
+
+  //
+  // informRocketLaunchersAboutEnemyBase
+  // ===================================
+  // > inform all nearby rocket launchers about enemy base location
+  //
+  void informRocketLaunchersAboutEnemyBase() {
+    // Get all nearby rocket launchers
+    ArrayList launchers = perceiveRobots(friend, LAUNCHER);
+    
+    if (launchers != null) {
+      // Enemy base position
+      PVector enemyBasePos = new PVector(brain[0].x, brain[0].y);
+      
+      // Inform each rocket launcher
+      for (int i = 0; i < launchers.size(); i++) {
+        RocketLauncher launcher = (RocketLauncher)launchers.get(i);
+        informAboutTarget(launcher, enemyBasePos, BASE);
+      }
+    }
+  }
+
+  //
+  // informAboutTarget
+  // =================
+  // > send a message to a robot with position and breed of a target
+  //
+  // inputs
+  // ------
+  // > r = the robot to inform
+  // > targetPos = position of the target
+  // > breed = breed of the target
+  //
+  void informAboutTarget(Robot r, PVector targetPos, int breed) {
+    float[] args = new float[3];
+    args[0] = targetPos.x;
+    args[1] = targetPos.y;
+    args[2] = breed;
+    sendMessage(r, INFORM_ABOUT_TARGET, args);
   }
 
   //
@@ -961,20 +1006,21 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
   // selectTargetWithPriority
   // ========================
   // > select target based on priority system:
-  // > 1. Bases (highest priority)
-  // > 2. Harvesters (economic targets)
-  // > 3. Rocket Launchers (only if we have advantage)
+  // > 1. Harvesters (economic targets)
+  // > 2. Bases
+  // > 3. Rocket Launchers (only if we can do significant damage)
   // > 4. Explorers (lowest priority)
   //
   void selectTargetWithPriority() {
     Robot bob = null;
+
+    // Priority 1: Enemy harvesters (economic targets)
+    bob = (Robot)minDist(perceiveRobots(ennemy, HARVESTER));
     
-    // Priority 1: Enemy bases (highest priority)
-    bob = (Robot)minDist(perceiveRobots(ennemy, BASE));
-    
-    // Priority 2: Enemy harvesters (economic targets)
-    if (bob == null) {
-      bob = (Robot)minDist(perceiveRobots(ennemy, HARVESTER));
+    // Priority 2: Enemy bases
+    if(bob == null)
+    {
+      bob = (Robot)minDist(perceiveRobots(ennemy, BASE));
     }
     
     // Priority 3: Enemy rocket launchers
