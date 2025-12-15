@@ -53,7 +53,7 @@ class RedBase extends Base implements RedRobot {
     brain[5].x = 7;
     // 2 rocket launchers to create
     brain[5].y = 2;
-    // 0 explorer to create
+    // 1 explorer to create
     brain[5].z = 1;
     // No enemy base known at start
     brain[0].z = 0;
@@ -94,12 +94,9 @@ class RedBase extends Base implements RedRobot {
       if ((int)random(2) == 0)
         // creates a new harvester with 50% chance
         brain[5].x++;
-      else if ((int)random(2) == 0)
-        // creates a new rocket launcher with 25% chance
-        brain[5].y++;
       else
-        // creates a new explorer with 25% chance
-        brain[5].z++;
+        // creates a new rocket launcher with 50% chance
+        brain[5].y++;
     }
 
     // creates new bullets and fafs if the stock is low and enought energy
@@ -288,12 +285,13 @@ class RedBase extends Base implements RedRobot {
 //
 ///////////////////////////////////////////////////////////////////////////
 // map of the brain:
-//   4.x = (0 = exploration | 1 = go back to base | 2 = return to base with intel)
+//   4.x = (0 = westward exploration | 1 = return to base with intel | 2 = support mode near base)
 //   4.y = (0 = no enemy base known | 1 = enemy base known)
 //   0.x / 0.y = coordinates of enemy base
-//   0.z = time since enemy base was seen (to check if info is fresh)
-//   1.x / 1.y = last reported position to avoid spam
-//   2.x = (0 = info not yet transmitted | 1 = info transmitted to base)
+//   0.z = (0 = info not transmitted | 1 = info transmitted)
+//   1.x / 1.y = position of home base
+//   2.x = distance traveled during exploration
+//   3.x / 3.y = patrol position around the base
 ///////////////////////////////////////////////////////////////////////////
 class RedExplorer extends Explorer implements RedRobot {
   //
@@ -310,9 +308,20 @@ class RedExplorer extends Explorer implements RedRobot {
   // > called at the creation of the agent
   //
   void setup() {
+    brain[4].x = 0; // Westward exploration mode
     brain[4].y = 0; // No enemy base known
-    brain[2].x = 0; // Info not transmitted
-    brain[0].z = 0; // Timer
+    brain[0].z = 0; // Info not transmitted
+    brain[2].x = 0; // Distance traveled
+    
+    // Record the spawn base position (closest base)
+    Base homeBase = (Base)minDist(myBases);
+    if (homeBase != null) {
+      brain[1].x = homeBase.pos.x;
+      brain[1].y = homeBase.pos.y;
+    }
+    
+    // Initial direction westward (west = PI radians)
+    heading = PI;
   }
 
   //
@@ -322,332 +331,239 @@ class RedExplorer extends Explorer implements RedRobot {
   // > defines the behavior of the agent
   //
   void go() {
-    // Update timer
-    brain[0].z++;
-    
-    // PRIORITY 1: If enemy base spotted and not yet reported, return immediately
-    if (brain[4].y == 1 && brain[2].x == 0) {
-      brain[4].x = 2; // Emergency return mode
+    // Always look for enemy base in exploration mode
+    if (brain[4].x == 0) {
+      lookForEnemyBase();
     }
     
-    // PRIORITY 2: If carrying significant food or low energy, return to base
-    if ((carryingFood > 100) || (energy < 300)) {
-      brain[4].x = 1; // Normal return mode
+    // If enemy base found and not yet reported
+    if (brain[4].y == 1 && brain[0].z == 0) {
+      brain[4].x = 1; // Switch to return mode
     }
     
-    // Handle food transfer from harvesters
-    handleFoodTransfer();
+    // Energy management - return if too low
+    if (energy < 200 && brain[4].x != 2) {
+      brain[4].x = 1; // Return to base
+    }
     
-    // Execute behavior based on state
-    if (brain[4].x == 2) {
-      // EMERGENCY RETURN: Rush back to base with critical intel
-      rushToBaseWithIntel();
+    // Execute behavior based on mode
+    if (brain[4].x == 0) {
+      // Westward exploration mode
+      exploreWestward();
     } else if (brain[4].x == 1) {
-      // NORMAL RETURN: Go back to base
-      goBackToBase();
-    } else {
-      // EXPLORATION MODE: Active scouting
-      activeExploration();
+      // Return to base with intel mode
+      returnToHomeBase();
+    } else if (brain[4].x == 2) {
+      // Support mode near base
+      supportNearBase();
     }
-    
-    // Always try to spot enemy base (highest priority intel)
-    lookForEnnemyBase();
-    
-    // Provide tactical support to allies
-    driveHarvesters();
-    driveRocketLaunchers();
     
     // clear the message queue
     flushMessages();
   }
 
   //
-  // activeExploration
-  // =================
-  // > intelligent exploration with purpose
+  // exploreWestward
+  // ===============
+  // > explore westward looking for enemy base
   //
-  void activeExploration() {
-    // If we know where enemy base is, explore around it for intelligence
-    if (brain[4].y == 1 && brain[2].x == 1) {
-      // Info already transmitted, continue exploring near enemy territory
-      PVector enemyBasePos = new PVector(brain[0].x, brain[0].y);
-      float distToEnemyBase = distance(enemyBasePos);
-      
-      if (distToEnemyBase > launcherPerception * 2) {
-        // Move towards enemy base area but keep safe distance
-        heading = towards(enemyBasePos) + random(-radians(30), radians(30));
-        tryToMoveForward();
-      } else {
-        // Patrol around enemy base at safe distance
-        patrolAroundPosition(enemyBasePos, launcherPerception * 1.5);
-      }
-    } else {
-      // Standard exploration: cover ground efficiently
-      heading += random(-radians(45), radians(45));
-      tryToMoveForward();
-    }
-  }
-
-  //
-  // patrolAroundPosition
-  // ====================
-  // > patrol in a circle around a position
-  //
-  void patrolAroundPosition(PVector pos, float radius) {
-    float distToPos = distance(pos);
+  void exploreWestward() {
+    // Main direction westward with small variations
+    heading = PI + random(-radians(20), radians(20));
     
-    if (distToPos < radius * 0.8) {
-      // Too close, move away
-      heading = towards(pos) + PI;
-      tryToMoveForward();
-    } else if (distToPos > radius * 1.2) {
-      // Too far, move closer
-      heading = towards(pos);
-      tryToMoveForward();
-    } else {
-      // Perfect distance, circle around
-      heading = towards(pos) + HALF_PI;
-      tryToMoveForward();
-    }
+    // Increment distance traveled
+    brain[2].x += speed;
+    
+    // Try to move forward
+    tryToMoveForward();
   }
 
   //
-  // rushToBaseWithIntel
-  // ===================
-  // > return to base as fast as possible with critical intel
+  // returnToHomeBase
+  // ================
+  // > return to home base to transmit intel
   //
-  void rushToBaseWithIntel() {
-    Base bob = (Base)minDist(myBases);
-    if (bob != null) {
-      float dist = distance(bob);
+  void returnToHomeBase() {
+    PVector homeBasePos = new PVector(brain[1].x, brain[1].y);
+    float dist = distance(homeBasePos);
+    
+    if (dist <= basePerception) {
+      // Within base range - transmit intel
+      Base homeBase = (Base)minDist(myBases);
+      if (homeBase != null && brain[0].z == 0) {
+        transmitEnemyBaseIntel(homeBase);
+        brain[0].z = 1; // Mark as transmitted
+      }
       
-      if (dist <= basePerception) {
-        // Within base range - transmit intel immediately
-        transmitEnemyBaseIntel(bob);
-        brain[2].x = 1; // Mark as transmitted
-        
-        if (dist <= 2) {
-          // Next to base - reload energy quickly if needed
-          if (energy < 500) {
-            askForEnergy(bob, 1500 - energy);
-          }
-          // Immediately return to exploration with fresh energy
-          brain[4].x = 0;
-          right(180);
+      // Switch to support mode near base
+      brain[4].x = 2;
+      
+      // Reload if necessary
+      if (energy < 500 && homeBase != null) {
+        if (distance(homeBase) <= 2) {
+          askForEnergy(homeBase, 1000 - energy);
         } else {
-          // Move closer to base
-          heading = towards(bob);
+          heading = towards(homeBase);
           tryToMoveForward();
         }
-      } else {
-        // Rush towards base with maximum priority
-        heading = towards(bob);
-        tryToMoveForward();
+      }
+    } else {
+      // Head towards home base
+      heading = towards(homeBasePos);
+      tryToMoveForward();
+    }
+  }
+
+  //
+  // supportNearBase
+  // ===============
+  // > stay near ally base to support harvesters
+  //
+  void supportNearBase() {
+    PVector homeBasePos = new PVector(brain[1].x, brain[1].y);
+    float distToBase = distance(homeBasePos);
+    
+    // Patrol radius around base (within perception perimeter)
+    float patrolRadius = basePerception * 0.7;
+    
+    // Accept food transfers from harvesters
+    handleFoodTransferFromHarvesters();
+    
+    // Inform harvesters about nearby food
+    informHarvestersAboutNearbyFood();
+    
+    // If too far from base, return
+    if (distToBase > patrolRadius * 1.5) {
+      heading = towards(homeBasePos);
+      tryToMoveForward();
+    }
+    // If too close, move away a bit
+    else if (distToBase < patrolRadius * 0.3) {
+      heading = towards(homeBasePos) + PI; // Opposite direction
+      tryToMoveForward();
+    }
+    // Correct distance - patrol in circle
+    else {
+      // Patrol around the base
+      heading = towards(homeBasePos) + HALF_PI;
+      tryToMoveForward();
+    }
+    
+    // Reload if energy is low
+    if (energy < 300) {
+      Base homeBase = (Base)minDist(myBases);
+      if (homeBase != null) {
+        float dist = distance(homeBase);
+        if (dist <= 2) {
+          askForEnergy(homeBase, 1000 - energy);
+        } else if (dist < basePerception) {
+          heading = towards(homeBase);
+          tryToMoveForward();
+        }
       }
     }
   }
 
   //
-  // goBackToBase
-  // ============
-  // > go back to the closest base to deposit food or reload energy
+  // informHarvestersAboutNearbyFood
+  // ===============================
+  // > inform all nearby harvesters about food found
   //
-  void goBackToBase() {
-    Base bob = (Base)minDist(myBases);
-    if (bob != null) {
-      float dist = distance(bob);
-
-      if (dist <= 2) {
-        // Next to the base
-        if (energy < 500) {
-          askForEnergy(bob, 1500 - energy);
+  void informHarvestersAboutNearbyFood() {
+    // Look for nearby food
+    Burger food = (Burger)minDist(perceiveBurgers());
+    
+    if (food != null) {
+      // Inform all harvesters in range
+      ArrayList harvesters = perceiveRobots(friend, HARVESTER);
+      if (harvesters != null) {
+        for (int i = 0; i < harvesters.size(); i++) {
+          Harvester harvey = (Harvester)harvesters.get(i);
+          // Only inform if harvester is not already full
+          if (harvey.carryingFood < 150) {
+            informAboutFood(harvey, food.pos);
+          }
         }
-        
-        // If we have intel to share, transmit it
-        if (brain[4].y == 1 && brain[2].x == 0) {
-          transmitEnemyBaseIntel(bob);
-          brain[2].x = 1;
-        }
-        
-        // Ready to go back to exploration
-        brain[4].x = 0;
-        right(180);
-      } else {
-        // Head towards the base
-        heading = towards(bob) + random(-radians(20), radians(20));
-        tryToMoveForward();
       }
+    }
+  }
+
+  //
+  // handleFoodTransferFromHarvesters
+  // ================================
+  // > handle food transfers from harvesters
+  //
+  void handleFoodTransferFromHarvesters() {
+    // Look for nearby harvesters with lots of food
+    ArrayList harvesters = perceiveRobots(friend, HARVESTER);
+    
+    if (harvesters != null) {
+      for (int i = 0; i < harvesters.size(); i++) {
+        Harvester harv = (Harvester)harvesters.get(i);
+        
+        // If harvester has lots of food and we have capacity
+        if (harv.carryingFood > 150 && carryingFood < 100) {
+          float dist = distance(harv);
+          
+          if (dist <= 2) {
+            // Next to harvester - it can transfer food to us
+            // Harvester will use giveFood on us
+            return; // Stay here to receive
+          } else if (dist < explorerPerception * 0.4) {
+            // Nearby harvester needs help - go towards it
+            heading = towards(harv);
+            tryToMoveForward();
+            return;
+          }
+        }
+      }
+    }
+    
+    // If carrying food, bring it back to base
+    if (carryingFood > 100) {
+      Base homeBase = (Base)minDist(myBases);
+      if (homeBase != null) {
+        float dist = distance(homeBase);
+        if (dist <= 2) {
+          // Deposit food at base
+          giveFood(homeBase, carryingFood);
+        } else if (dist < basePerception) {
+          // Go towards base
+          heading = towards(homeBase);
+          tryToMoveForward();
+        }
+      }
+    }
+  }
+
+  //
+  // lookForEnemyBase
+  // ================
+  // > actively search for enemy base
+  //
+  void lookForEnemyBase() {
+    Base enemyBase = (Base)oneOf(perceiveRobots(ennemy, BASE));
+    if (enemyBase != null && brain[4].y == 0) {
+      // Enemy base found!
+      brain[0].x = enemyBase.pos.x;
+      brain[0].y = enemyBase.pos.y;
+      brain[4].y = 1; // Mark that we know enemy base
+      brain[0].z = 0; // Info not yet transmitted
     }
   }
 
   //
   // transmitEnemyBaseIntel
   // ======================
-  // > transmit enemy base location to our base
+  // > transmit enemy base position to our base
   //
   void transmitEnemyBaseIntel(Base base) {
     if (brain[4].y == 1) {
-      // We need to create a message manually since we only have position
       float[] args = new float[3];
       args[0] = brain[0].x;
       args[1] = brain[0].y;
       args[2] = BASE;
       sendMessage(base, INFORM_ABOUT_TARGET, args);
-      
-      // Store that we reported this position
-      brain[1].x = brain[0].x;
-      brain[1].y = brain[0].y;
-    }
-  }
-  
-  //
-  // handleFoodTransfer
-  // ==================
-  // > handle food transfer from harvesters efficiently
-  //
-  void handleFoodTransfer() {
-    // Check for nearby harvesters requesting help
-    ArrayList harvesters = perceiveRobots(friend, HARVESTER);
-    if (harvesters != null) {
-      for (int i = 0; i < harvesters.size(); i++) {
-        Harvester harv = (Harvester)harvesters.get(i);
-        
-        // If harvester has significant food and we have capacity
-        if (harv.carryingFood > 150 && carryingFood < 100) {
-          float dist = distance(harv);
-          
-          if (dist <= 2) {
-            // Next to harvester - accept food transfer
-            // The harvester will use giveFood on us
-            return; // Stay here to receive
-          } else if (dist < explorerPerception * 0.5) {
-            // Nearby harvester needs help - move towards it
-            heading = towards(harv);
-            tryToMoveForward();
-            return; // Priority action
-          }
-        }
-      }
-    }
-    
-    // Also check messages
-    Message msg;
-    for (int i = 0; i < messages.size(); i++) {
-      msg = messages.get(i);
-      if (msg.type == HARVESTER_FULL) {
-        PVector harvesterPos = new PVector(msg.args[0], msg.args[1]);
-        float harvesterFood = msg.args[2];
-        
-        // If we have capacity and the harvester has significant food
-        if (carryingFood < 100 && harvesterFood > 150) {
-          float dist = distance(harvesterPos);
-          
-          if (dist < explorerPerception) {
-            // Move towards the harvester
-            heading = towards(harvesterPos);
-            tryToMoveForward();
-          }
-        }
-      }
-    }
-  }
-
-  //
-  // driveHarvesters
-  // ===============
-  // > provide real-time intelligence to harvesters about food
-  //
-  void driveHarvesters() {
-    Burger zorg = (Burger)minDist(perceiveBurgers());
-    if (zorg != null) {
-      // Found food - inform ALL nearby harvesters
-      ArrayList harvesters = perceiveRobots(friend, HARVESTER);
-      if (harvesters != null) {
-        for (int i = 0; i < harvesters.size(); i++) {
-          Harvester harvey = (Harvester)harvesters.get(i);
-          // Only inform if harvester is not already carrying much food
-          if (harvey.carryingFood < 150) {
-            informAboutFood(harvey, zorg.pos);
-          }
-        }
-      }
-    }
-  }
-
-  //
-  // driveRocketLaunchers
-  // ====================
-  // > provide tactical intelligence to rocket launchers
-  //
-  void driveRocketLaunchers() {
-    // Look for high-value enemy targets
-    Robot highValueTarget = null;
-    
-    // Priority 1: Check for base (highest priority)
-    ArrayList enemyBases = perceiveRobots(ennemy, BASE);
-    if (enemyBases != null && enemyBases.size() > 0) {
-      highValueTarget = (Robot)enemyBases.get(0);
-    }
-    
-    // Priority 2: Check for harvesters (economic targets)
-    if (highValueTarget == null) {
-      ArrayList enemyHarvesters = perceiveRobots(ennemy, HARVESTER);
-      if (enemyHarvesters != null && enemyHarvesters.size() > 0) {
-        highValueTarget = (Robot)enemyHarvesters.get(0);
-      }
-    }
-    
-    // Priority 3: Any enemy robot
-    if (highValueTarget == null) {
-      highValueTarget = (Robot)minDist(perceiveRobots(ennemy));
-    }
-    
-    // If we found a target, inform ALL nearby rocket launchers
-    if (highValueTarget != null) {
-      ArrayList launchers = perceiveRobots(friend, LAUNCHER);
-      if (launchers != null) {
-        for (int i = 0; i < launchers.size(); i++) {
-          RocketLauncher rocky = (RocketLauncher)launchers.get(i);
-          informAboutTarget(rocky, highValueTarget);
-        }
-      }
-    }
-  }
-
-  //
-  // lookForEnnemyBase
-  // =================
-  // > actively search for enemy bases (critical intelligence)
-  //
-  void lookForEnnemyBase() {
-    Base babe = (Base)oneOf(perceiveRobots(ennemy, BASE));
-    if (babe != null) {
-      // CRITICAL INTEL: Enemy base spotted!
-      
-      // Check if this is new info (position changed significantly)
-      PVector oldPos = new PVector(brain[0].x, brain[0].y);
-      float posChange = PVector.dist(oldPos, babe.pos);
-      
-      if (brain[4].y == 0 || posChange > 10) {
-        // New enemy base or it moved - record it
-        brain[0].x = babe.pos.x;
-        brain[0].y = babe.pos.y;
-        brain[4].y = 1; // Mark that we know enemy base
-        brain[0].z = 0; // Reset timer
-        brain[2].x = 0; // Mark that this info needs to be transmitted
-        
-        // Immediately switch to rush mode to report this
-        brain[4].x = 2;
-      }
-      
-      // Also inform any nearby friendly explorers (pass the Robot directly)
-      ArrayList explorers = perceiveRobots(friend, EXPLORER);
-      if (explorers != null) {
-        for (int i = 0; i < explorers.size(); i++) {
-          Explorer explo = (Explorer)explorers.get(i);
-          informAboutTarget(explo, babe);
-        }
-      }
     }
   }
 
