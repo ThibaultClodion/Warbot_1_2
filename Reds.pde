@@ -958,7 +958,7 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
     }
     
     // if no energy or no bullets, go back to base
-    if ((energy < 300) || (bullets == 0)) {
+    if ((energy < 500) || (bullets == 0)) {
       brain[4].x = 1;
       brain[2].y = 0; // Clear communicated target when going to base
     }
@@ -1061,13 +1061,13 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
       bob = (Robot)minDist(perceiveRobots(ennemy, HARVESTER));
     }
     
-    // Priority 3: Enemy rocket launchers (only if we have advantage)
+    // Priority 3: Enemy rocket launchers
     if (bob == null) {
       Robot enemyLauncher = (Robot)minDist(perceiveRobots(ennemy, LAUNCHER));
       if (enemyLauncher != null) {
-        // Only engage if we are sure to win
-        if(enemyLauncher.bullets * bulletDamageToRobot < energy &&
-        bullets * bulletDamageToRobot > enemyLauncher.energy) {
+        // Only engage if we can make important damages
+        if( bullets >= enemyLauncher.bullets / 2)
+        {
           bob = enemyLauncher;
         }
         // Retreat
@@ -1108,7 +1108,7 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
     }
   }
 
-  //
+    //
   // predictTargetPosition
   // =====================
   // > predicts where the target will be when bullet arrives
@@ -1130,8 +1130,15 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
     // Calculate distance to target
     float distToTarget = distance(target);
     
-    // Bullet travel time
+    // Bullet travel time (use correct bullet speed from game parameters)
     float bulletTravelTime = distToTarget / bulletSpeed;
+    
+    // Check if target is moving or stationary
+    // If speed is very low or zero, target is essentially stationary
+    if (target.speed < 0.1) {
+      // Target is stationary or barely moving - shoot directly at it
+      return target.pos.copy();
+    }
     
     // Estimate target's future position based on velocity
     float targetVelocityX = cos(target.heading) * target.speed;
@@ -1159,7 +1166,7 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
     // Get predicted position for shooting
     PVector predictedPos = new PVector(brain[1].x, brain[1].y);
     
-    // FIXED: Use towards() method which handles wrapping correctly
+    // Calculate angle towards predicted position
     float angleToTarget = towards(predictedPos);
     
     // OPTIMIZED MOVEMENT with minimum safe distance
@@ -1168,14 +1175,11 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
     
     if (distToTarget > optimalDistance) {
       // Too far - move closer aggressively
-      // FIXED: Use towards() for movement direction as well
       heading = towards(targetPos);
       tryToMoveForward();
     } 
     else if (distToTarget < minSafeDistance) {
       // TOO CLOSE - RETREAT to safe distance
-      // Move backwards while keeping target in sight
-      // FIXED: Use towards() and add PI to go opposite direction
       heading = towards(targetPos) + PI;  // Opposite direction
       if (freeAhead(speed)) {
         forward(speed);
@@ -1204,13 +1208,20 @@ class RedRocketLauncher extends RocketLauncher implements RedRobot {
       }
     }
     
-    // SHOOTING - only shoot if at safe distance
+    // IMPROVED SHOOTING - only shoot if properly aimed
     if (distToTarget >= minSafeDistance) {
+      // Check if no friendly robots are in the line of fire
       ArrayList friendsInCone = perceiveRobotsInCone(friend, angleToTarget);
       
       if (friendsInCone == null || friendsInCone.size() == 0) {
+        // Set heading precisely to the predicted position
         heading = angleToTarget;
-        launchBullet(angleToTarget);
+        
+        // Add a small accuracy check - only shoot if facing roughly the right direction
+        float headingDiff = abs(heading - angleToTarget);
+        if (headingDiff < radians(10)) {  // Within 10 degrees
+          launchBullet(heading);  // Use current heading, not recalculated angle
+        }
       }
     }
   }
