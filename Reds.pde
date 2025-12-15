@@ -54,7 +54,7 @@ class RedBase extends Base implements RedRobot {
     // 2 rocket launchers to create
     brain[5].y = 2;
     // 0 explorer to create
-    brain[5].z = 0;
+    brain[5].z = 1;
     // No enemy base known at start
     brain[0].z = 0;
   }
@@ -89,7 +89,7 @@ class RedBase extends Base implements RedRobot {
       // 3rd priority = creates explorers 
       if (newExplorer())
         brain[5].z--;
-    } else if (energy > 12000) {
+    } else if (energy > 10000) {
       // if no robot in the pipe and enough energy 
       if ((int)random(2) == 0)
         // creates a new harvester with 50% chance
@@ -317,6 +317,9 @@ class RedExplorer extends Explorer implements RedRobot {
   // > defines the behavior of the agent
   //
   void go() {
+    // Handle food transfer requests first
+    handleFoodTransfer();
+
     // if food to deposit or too few energy
     if ((carryingFood > 200) || (energy < 300))
       // time to go back to base
@@ -386,6 +389,47 @@ class RedExplorer extends Explorer implements RedRobot {
         heading = towards(bob) + random(-radians(20), radians(20));
         // ...and try to move forward 
         tryToMoveForward();
+      }
+    }
+  }
+
+    //
+  // handleFoodTransfer
+  // ==================
+  // > handle food transfer from harvesters
+  //
+  void handleFoodTransfer() {
+    Message msg;
+    // for all messages
+    for (int i=0; i<messages.size(); i++) 
+    {
+      msg = messages.get(i);
+      if (msg.type != HARVESTER_FULL) continue;
+
+      // Harvester is requesting food transfer
+      PVector harvesterPos = new PVector(msg.args[0], msg.args[1]);
+        
+      // If we have capacity and are nearby
+      if (carryingFood < 100 && distance(harvesterPos) < explorerPerception) 
+      {
+        // Find the harvester
+        ArrayList harvesters = perceiveRobots(friend, HARVESTER);
+        if (harvesters == null) continue;
+
+        for (int j = 0; j < harvesters.size(); j++) 
+        {
+          Harvester harv = (Harvester)harvesters.get(j);
+
+          if (harv.who == msg.alice && distance(harv) > 2)
+          {
+            // Move towards the harvester
+            heading = towards(harv);
+            if (freeAhead(speed)) 
+            {
+              forward(speed);
+            }
+          }
+        }
       }
     }
   }
@@ -518,6 +562,25 @@ class RedHarvester extends Harvester implements RedRobot {
     if ((b != null) && (distance(b) <= 2))
       // if one is found next to the robot, collect it
       takeFood(b);
+    
+    // If cargo is almost full, try to transfer to nearby explorer
+    if (carryingFood > 150 && carryingFood < 200) 
+    {
+      Explorer nearbyExplorer = (Explorer)minDist(perceiveRobots(friend, EXPLORER));
+
+      if(nearbyExplorer != null)
+      {
+        if(distance(nearbyExplorer) <= 2)
+        {
+          // Transfer half the food to the explorer
+          float transferAmount = carryingFood / 2;
+          giveFood(nearbyExplorer, transferAmount);
+        }
+
+        // Notify nearby explorers that harvester is full
+        requestFoodTransfer();
+      }
+    }
 
     // if food to deposit or too few energy
     if ((carryingFood > 200) || (energy < 100))
@@ -576,6 +639,28 @@ class RedHarvester extends Harvester implements RedRobot {
         heading = towards(bob) + random(-radians(20), radians(20));
         // ...and try to move forward
         tryToMoveForward();
+      }
+    }
+  }
+
+  //
+  // requestFoodTransfer
+  // ===================
+  // > inform nearby explorers that cargo is full and request transfer
+  //
+  void requestFoodTransfer() {
+    // Look for nearby friendly explorers
+    ArrayList explorers = perceiveRobots(friend, EXPLORER);
+
+    if (explorers != null) {
+      for (int i = 0; i < explorers.size(); i++) {
+        Explorer explorer = (Explorer)explorers.get(i);
+        // Send message with current position and amount of food
+        float[] args = new float[3];
+        args[0] = pos.x;
+        args[1] = pos.y;
+        args[2] = carryingFood;
+        sendMessage(explorer, HARVESTER_FULL, args);
       }
     }
   }
