@@ -1,2 +1,2 @@
 # Warbot_1_2
-IA project made in JIN
+AI project that showcase how strategic behaviors could overcome a naïve approach.
