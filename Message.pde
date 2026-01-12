@@ -6,7 +6,6 @@ final int ASK_FOR_BULLETS = 1;
 final int INFORM_ABOUT_FOOD = 2;
 final int INFORM_ABOUT_TARGET = 3;
 final int INFORM_ABOUT_XYTARGET = 4;
-final int HARVESTER_FULL = 5;
 
 ///////////////////////////////////////////////////////////////////////////
 //

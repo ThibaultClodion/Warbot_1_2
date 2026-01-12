@@ -7,6 +7,7 @@
 
 class RedTeam extends Team {
   final int MY_CUSTOM_MSG = 5;
+  static final int HARVESTER_FULL = 5;
   
   PVector base1, base2;
 
@@ -768,7 +769,7 @@ class RedHarvester extends Harvester implements RedRobot {
         args[0] = pos.x;
         args[1] = pos.y;
         args[2] = carryingFood;
-        sendMessage(explorer, HARVESTER_FULL, args);
+        sendMessage(explorer, RedTeam.HARVESTER_FULL, args);
       }
     }
   }
