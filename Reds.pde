@@ -100,7 +100,7 @@ class RedBase extends Base implements RedRobot {
     }
 
     // creates new fafs if the stock is low and enought energy
-    if ((fafs < 10) && (energy > 1000))
+    if ((fafs < 10) && (energy > 3000))
       newFafs(10);
 
     // OPTIMIZED SHOOTING BEHAVIOR
