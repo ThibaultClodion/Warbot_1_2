@@ -6,7 +6,6 @@
 ///////////////////////////////////////////////////////////////////////////
 
 class RedTeam extends Team {
-  final int MY_CUSTOM_MSG = 5;
   static final int HARVESTER_FULL = 5;
   
   PVector base1, base2;
