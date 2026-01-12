@@ -99,61 +99,16 @@ class RedBase extends Base implements RedRobot {
         brain[5].y++;
     }
 
-    // creates new bullets and fafs if the stock is low and enought energy
-    if ((bullets < 10) && (energy > 1000))
-      newBullets(50);
+    // creates new fafs if the stock is low and enought energy
     if ((fafs < 10) && (energy > 1000))
       newFafs(10);
 
     // OPTIMIZED SHOOTING BEHAVIOR
-    // Priority 1: Target enemy bases (highest priority)
-    Robot target = (Robot)minDist(perceiveRobots(ennemy, BASE));
+    Robot target = (Robot)minDist(perceiveRobots(ennemy, LAUNCHER));
     
-    // Priority 2: Target enemy rocket launchers (dangerous threats)
-    if (target == null) {
-      target = (Robot)minDist(perceiveRobots(ennemy, LAUNCHER));
-    }
-    
-    // Priority 3: Target harvester
-    if (target == null) {
-      target = (Robot)minDist(perceiveRobots(ennemy, HARVESTER));
-    }
-
-    // Priority 4: Target explorers
-    if (target == null) {
-      target = (Robot)minDist(perceiveRobots(ennemy));
-    }
-    
-    // If a target is found
+    // If a target is found and is a threat (a Launcher)
     if (target != null) {
-      // Calculate predicted position based on target's movement
-      PVector predictedPos = predictTargetPosition(target);
-      
-      // Calculate angle towards predicted position
-      float shootAngle = atan2(predictedPos.y - pos.y, predictedPos.x - pos.x);
-      heading = shootAngle;
-      
-      // Check if no friendly robots are in the line of fire
-      ArrayList friendsInCone = perceiveRobotsInCone(friend, heading);
-      
-      if (friendsInCone == null || friendsInCone.size() == 0) {
-        // Calculate distance to target
-        float distToTarget = distance(target);
-
-        if(target.breed == EXPLORER) 
-        {
-          // Don't waste ammo on explorers
-          return;
-        }
-        else if(bullets >= 10 && (target.breed == BASE || distToTarget < basePerception * 0.8)) {
-          // Use bullets for bases or close targets
-          launchBullet(shootAngle);
-        }
-        else if(fafs > 0) {
-          // Use fafs for other targets if available
-          launchFaf(target);
-        }
-      }
+      launchFaf(target);
     }
   }
   
