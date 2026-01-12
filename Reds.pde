@@ -75,17 +75,17 @@ class RedBase extends Base implements RedRobot {
     }
 
     // creates new robots depending on energy and the state of brain[5]
-    if ((brain[5].x > 0) && (energy >= 1000 + harvesterCost)) {
+    if ((brain[5].x > 0) && (energy >= 1500 + harvesterCost)) {
       // 1st priority = creates harvesters 
       if (newHarvester())
         brain[5].x--;
-    } else if ((brain[5].y > 0) && (energy >= 1000 + launcherCost)) {
+    } else if ((brain[5].y > 0) && (energy >= 1500 + launcherCost)) {
       // 2nd priority = creates rocket launchers 
       if (newRocketLauncher())
       {
         brain[5].y--;
       }
-    } else if ((brain[5].z > 0) && (energy >= 1000 + explorerCost)) {
+    } else if ((brain[5].z > 0) && (energy >= 1500 + explorerCost)) {
       // 3rd priority = creates explorers 
       if (newExplorer())
         brain[5].z--;
@@ -100,7 +100,7 @@ class RedBase extends Base implements RedRobot {
     }
 
     // creates new fafs if the stock is low and enought energy
-    if ((fafs < 10) && (energy > 3000))
+    if ((fafs < 10) && (energy > 2500))
       newFafs(10);
 
     // OPTIMIZED SHOOTING BEHAVIOR
@@ -208,13 +208,13 @@ class RedBase extends Base implements RedRobot {
       msg = messages.get(i);
       if (msg.type == ASK_FOR_ENERGY) {
         // if the message is a request for energy
-        if (energy > 1000 + msg.args[0]) {
+        if (energy > 1500 + msg.args[0]) {
           // gives the requested amount of energy only if at least 1000 units of energy left after
           giveEnergy(msg.alice, msg.args[0]);
         }
       } else if (msg.type == ASK_FOR_BULLETS) {
         // if the message is a request for bullets
-        if (energy > 1000 + msg.args[0] * bulletCost) {
+        if (energy > 1500 + msg.args[0] * bulletCost) {
           // gives the requested amount of bullets only if at least 1000 units of energy left after
           giveBullets(msg.alice, msg.args[0]);
         }
